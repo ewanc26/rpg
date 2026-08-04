@@ -1,0 +1,188 @@
+# AGENTS.md
+
+Guidance for AI coding agents working in this repository. Human contributors
+may find it useful too, but the audience is agents.
+
+## Project overview
+
+A top-down RPG starter template for **Godot 4.7** using the **.NET/Mono (C#)**
+build. There is no GDScript in this project — all gameplay code is C#.
+
+- Godot project name: `RPG Template` (matters: it determines the `user://` path)
+- C# assembly name: `RPGTemplate` (`RPGTemplate.csproj`, `net8.0`)
+- Main scene: `scenes/TitleScreen.tscn`
+- Autoloads: `EventBus` (global signals), `GameManager` (scene changes, pause)
+
+Target platforms are **macOS** and **SteamOS / Linux desktop** (Steam Deck).
+Windows is not tested; do not add Windows-only APIs or path assumptions.
+
+## Repository layout
+
+```
+project.godot          Engine config, autoloads, input map, collision layer names
+RPGTemplate.csproj     Godot.NET.Sdk 4.7.0, net8.0
+scripts/
+  Autoload/            EventBus, GameManager (registered in project.godot)
+  Player/              PlayerController, PlayerStats
+  Systems/             Inventory, InventoryItem, InventorySlot, ItemPickup,
+                       SaveSystem, IInteractable
+  NPC/                 NPC.cs
+  UI/                  HUD, DialogueBox, TitleScreen
+scenes/                Player, NPC, ItemPickup, TitleScreen, UI/, World/
+resources/items/       Sample InventoryItem .tres resources
+```
+
+## Environment setup
+
+### macOS
+
+```bash
+brew install --cask godot-mono     # Godot 4.7 .NET editor (requires macOS 11+)
+brew install --cask dotnet-sdk     # .NET 8 SDK or newer
+```
+
+- **Use the `godot-mono` cask, not `godot`.** The plain `godot` cask has no C#
+  support and will fail to load every script in this project.
+- The cask installs an app bundle into `/Applications`. Confirm its exact name
+  before scripting against it — it has changed between releases:
+  ```bash
+  ls /Applications | grep -i godot
+  GODOT="/Applications/Godot_mono.app/Contents/MacOS/Godot"   # adjust to match
+  ```
+- **Apple Silicon:** install the arm64 .NET SDK. A Rosetta/x64 `dotnet` paired
+  with an arm64 Godot produces confusing native-load failures at runtime, not
+  at build time. Check with `dotnet --info | grep -i architecture`.
+- If a manually downloaded (non-Homebrew) Godot refuses to launch, clear the
+  quarantine attribute: `xattr -dr com.apple.quarantine /Applications/<bundle>.app`.
+  Homebrew casks normally handle this already.
+- `user://` resolves to
+  `~/Library/Application Support/Godot/app_userdata/RPG Template/`.
+  `SaveSystem` writes `savegame.json` there.
+
+### SteamOS (Steam Deck)
+
+SteamOS 3.x is Arch-based with an **immutable, read-only root filesystem**.
+Do not use `pacman` to install the editor or the .NET SDK — those changes are
+wiped by the next SteamOS update, and `sudo steamos-readonly disable` is not
+something to do on a user's machine. Use Flatpak, which persists across
+updates.
+
+In **Desktop Mode**:
+
+```bash
+flatpak install --user flathub org.godotengine.GodotSharp
+flatpak run org.godotengine.GodotSharp
+```
+
+- Use `org.godotengine.GodotSharp`, **not** `org.godotengine.Godot` — the
+  latter is the GDScript-only build. (Both Flatpaks are community-maintained,
+  not official Godot builds.)
+- The GodotSharp Flatpak bundles its own .NET 8 SDK, so no separate install is
+  needed. In `Editor Settings > Dotnet > Builds`, make sure the build tool is
+  **dotnet CLI**, not MSBuild (Mono).
+- **Flatpak sandboxing** affects both ends of the filesystem:
+  - The editor can only reach the project if it is under `$HOME` or you grant
+    access explicitly (Flatseal, or `--filesystem=<path>`).
+  - `user://` is redirected into the sandbox at
+    `~/.var/app/org.godotengine.GodotSharp/data/godot/app_userdata/RPG Template/`.
+    When a save file "doesn't appear" on the Deck, look there before assuming
+    `SaveSystem` is broken.
+- Outside Flatpak (plain Linux), `user://` is
+  `~/.local/share/godot/app_userdata/RPG Template/`.
+
+## Build and run
+
+Preferred: open `project.godot` in the Godot .NET editor and press F5. Godot
+builds the C# solution automatically and reports script errors in the editor,
+which `dotnet build` alone will not catch.
+
+Command line:
+
+```bash
+dotnet build                                  # compile C# only
+"$GODOT" --headless --build-solutions --quit  # import assets + build solution
+"$GODOT" --headless --quit                    # reimport assets, populate .godot/
+```
+
+There is **no automated test suite**. "Verified" means the project opened, the
+solution built with no errors, and the change was exercised in a running game —
+not that `dotnet build` exited 0. If you cannot launch Godot in your
+environment, say so explicitly rather than implying the change was play-tested.
+
+When you cannot run the editor, you can still statically check scene integrity:
+`.tscn`/`.tres` files must have `load_steps` equal to the number of
+`ext_resource` + `sub_resource` entries plus one, every `ExtResource("id")` /
+`SubResource("id")` must resolve to a declared id, and every `NodePath("...")`
+must match a node actually declared in that scene.
+
+## Cross-platform rules
+
+These are the failure modes that actually bite this project:
+
+1. **Filesystem case sensitivity.** macOS APFS is case-insensitive by default;
+   SteamOS (ext4/btrfs) is case-sensitive. A `res://Scenes/player.tscn`
+   reference that loads fine on a Mac will fail to load on the Deck. Always
+   match the on-disk casing exactly. This is the single most common way a
+   macOS-authored change breaks on SteamOS.
+2. **Never build paths with `\` or `System.IO` for game data.** Use `res://`
+   and `user://` with Godot's `FileAccess`/`DirAccess`, as `SaveSystem` does.
+3. **Line endings and file modes.** Exported Linux binaries need the executable
+   bit. If a build is copied to a microSD card formatted exFAT, the exec bit is
+   lost — `chmod +x` after copying.
+4. **Do not hardcode a window size to one device.** The Steam Deck panel is
+   1280×800 (16:10). If you touch display settings, keep the UI resizable and
+   check both a 16:10 and a 16:9 aspect.
+
+## Input and controller support
+
+The input map in `project.godot` currently defines:
+
+- Movement: Godot's built-in `ui_left` / `ui_right` / `ui_up` / `ui_down`
+  (arrow keys, plus the engine's default joypad bindings)
+- `interact`: **keyboard `E` only**
+
+This means that on a Steam Deck in Game Mode, movement works via the built-in
+joypad bindings but **`interact` is unreachable without a Steam Input remap**.
+If you are adding or reworking controls, add explicit joypad bindings to
+`interact` (and any new actions) rather than relying on users to remap. Prefer
+adding dedicated `move_*` actions over depending on `ui_*`, which is really
+meant for menu navigation.
+
+## Code style
+
+Match the existing code; it is consistent and deliberate:
+
+- C# scripts attached to nodes are `public partial class X : <GodotType>`.
+- Exported members use `[Export] public T Name { get; set; }` in PascalCase.
+  **The property name in the C# file and the key in the `.tscn` file must match
+  exactly** — a rename in one place silently breaks the other, and Godot will
+  not warn you. Grep the `.tscn` files after renaming any exported property.
+- Cross-system communication goes through `EventBus` signals, not direct node
+  references. UI listens to `EventBus`; it does not poll the player.
+- Subscribe to `EventBus` in `_Ready()` and **always unsubscribe in
+  `_ExitTree()`** (see `HUD.cs`, `DialogueBox.cs`). The autoload outlives
+  scenes, so a missed unsubscribe leaks into the next scene and fires callbacks
+  on freed nodes.
+- Guard autoload access with `?.` (`EventBus.Instance?.EmitSignal(...)`) —
+  resources and tool scripts can run without the tree.
+- Prefer `Resource` subclasses (`PlayerStats`, `InventoryItem`) with
+  `[GlobalClass]` for authored data, so it is editable in the Inspector.
+- Plain data that never enters the scene tree stays a plain C# class
+  (`InventorySlot`) — do not derive from `Node`/`Resource` without reason.
+- Comments explain *why*, sparingly. Do not add narration to obvious code.
+
+## Do not commit
+
+Already covered by `.gitignore`, but worth stating: never commit `.godot/`,
+`bin/`, `obj/`, `.mono/`, `export_presets.cfg` (it can contain signing
+identities and store credentials), `.DS_Store`, or `*.user` files. If you add
+an export preset, do not commit macOS signing identities, notarization Apple
+IDs, or app-specific passwords.
+
+## Commits and pull requests
+
+- Develop on the designated feature branch; never push directly to `main`.
+- Write commit messages that explain the reasoning, not just the file list.
+- Do not open a pull request unless explicitly asked.
+- Do not reference the specific AI model used in commits, PRs, or code
+  comments.
