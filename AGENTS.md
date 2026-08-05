@@ -235,18 +235,27 @@ These are the failure modes that actually bite this project:
 
 ## Input and controller support
 
-The input map in `project.godot` currently defines:
+The input map in `project.godot` defines:
 
 - Movement: Godot's built-in `ui_left` / `ui_right` / `ui_up` / `ui_down`
-  (arrow keys, plus the engine's default joypad bindings)
-- `interact`: **keyboard `E` only**
+  (arrow keys, plus the engine's default D-pad and left-stick bindings)
+- `interact`: keyboard `E` **and** joypad button index 0 (`JOY_BUTTON_A` — the
+  bottom face button, `A` on a Steam Deck or Xbox pad, Cross on a DualSense)
 
-This means that on a Steam Deck in Game Mode, movement works via the built-in
-joypad bindings but **`interact` is unreachable without a Steam Input remap**.
-If you are adding or reworking controls, add explicit joypad bindings to
-`interact` (and any new actions) rather than relying on users to remap. Prefer
-adding dedicated `move_*` actions over depending on `ui_*`, which is really
-meant for menu navigation.
+Every event in the map uses `"device": -1`, which matches any connected
+controller rather than a fixed device index. Keep it that way: a hardcoded
+index breaks when the Deck enumerates its built-in pad differently from a
+docked external one.
+
+Rules when adding or reworking controls:
+
+- **Give every gameplay action a joypad binding at the point you add it**, not
+  later. The Deck in Game Mode has no keyboard, so a keyboard-only action is
+  unreachable there without a Steam Input remap — which is a bug, not a
+  configuration step to push onto the player.
+- Prefer dedicated `move_*` actions over depending on `ui_*`, which is really
+  meant for menu navigation. Movement still rides on `ui_*` today; that is the
+  next cleanup if you touch this area.
 
 ## Code style
 
