@@ -24,7 +24,7 @@ public partial class PlayerController : CharacterBody2D
 
     public override void _PhysicsProcess(double delta)
     {
-        Vector2 inputDirection = Input.GetVector("ui_left", "ui_right", "ui_up", "ui_down");
+        Vector2 inputDirection = Input.GetVector("move_left", "move_right", "move_up", "move_down");
         Velocity = inputDirection * Stats.MoveSpeed;
         MoveAndSlide();
     }

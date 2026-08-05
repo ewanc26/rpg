@@ -24,16 +24,19 @@ that combination directly, informed by common patterns from those projects.
 
 ## Controls
 
-| Action    | Keyboard     | Gamepad                    |
-|-----------|--------------|----------------------------|
-| Move      | Arrow keys   | D-pad / left stick         |
-| Interact  | `E`          | `A` (bottom face button)   |
+| Action    | Keyboard            | Gamepad                  |
+|-----------|---------------------|--------------------------|
+| Move      | Arrow keys / `WASD` | Left stick / D-pad       |
+| Interact  | `E`                 | `A` (bottom face button) |
 
-Arrow keys and the D-pad/stick come from Godot's built-in `ui_*` actions, so
-they work with zero input-map setup. `interact` is bound to both `E` and
-joypad button 0, so the template is playable on a Steam Deck in Game Mode
-without remapping anything. Add WASD or further bindings in
-Project Settings > Input Map if you want them.
+Every action is a project-defined action in `project.godot` (`move_left`,
+`move_right`, `move_up`, `move_down`, `interact`) rather than one of Godot's
+built-in `ui_*` actions, so gameplay input and menu navigation stay
+independent. Keyboard bindings use *physical* keycodes, so `WASD` lands on the
+same physical keys as `ZQSD` on an AZERTY layout.
+
+Every binding has a gamepad equivalent and matches any connected device, so
+the template is playable on a Steam Deck in Game Mode with no remapping.
 
 ## Project structure
 

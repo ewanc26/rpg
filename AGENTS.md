@@ -105,20 +105,55 @@ Command line:
 
 ```bash
 dotnet build                                  # compile C# only
-"$GODOT" --headless --build-solutions --quit  # import assets + build solution
-"$GODOT" --headless --quit                    # reimport assets, populate .godot/
+"$GODOT" --headless --import                  # import assets, populate .godot/
+"$GODOT" --headless --build-solutions --quit  # import + build the solution
+"$GODOT" --headless res://scenes/AScene.tscn  # run a scene with no display
 ```
 
-There is **no automated test suite**. "Verified" means the project opened, the
-solution built with no errors, and the change was exercised in a running game —
-not that `dotnet build` exited 0. If you cannot launch Godot in your
-environment, say so explicitly rather than implying the change was play-tested.
+Note that `--build-solutions` combined with a scene path hangs; build first,
+then run as a separate command.
 
-When you cannot run the editor, you can still statically check scene integrity:
-`.tscn`/`.tres` files must have `load_steps` equal to the number of
-`ext_resource` + `sub_resource` entries plus one, every `ExtResource("id")` /
-`SubResource("id")` must resolve to a declared id, and every `NodePath("...")`
-must match a node actually declared in that scene.
+### Running headless on a Linux agent or CI box
+
+You are not stuck with static checks — a full headless run is available on a
+plain Ubuntu container, and is expected before claiming a change works:
+
+```bash
+apt-get install -y dotnet-sdk-8.0     # Ubuntu 24.04 ships 8.0 in noble-updates/main
+curl -sSL -o godot.zip https://github.com/godotengine/godot/releases/download/\
+4.7.1-stable/Godot_v4.7.1-stable_mono_linux_x86_64.zip
+unzip -q godot.zip
+```
+
+Microsoft's own `dot.net` / `builds.dotnet.microsoft.com` endpoints may be
+blocked by an egress proxy; the Ubuntu package is the reliable route. The mono
+build **hard-requires** the .NET runtime — without it Godot segfaults on
+startup rather than degrading gracefully, so install the SDK first.
+
+There is **no automated test suite** checked in. "Verified" means the solution
+built with no errors *and* the change was exercised in a running game — not
+that `dotnet build` exited 0. Since a headless run is achievable, prefer
+writing a throwaway `Node` script that instantiates the relevant scene, asserts
+what you changed, prints results and calls `GetTree().Quit()`, then run it with
+`--headless <scene>` and delete it. That catches what compilation cannot:
+collision layer/mask mistakes, `NodePath` exports pointing at the wrong node,
+signals that never fire, and input actions that do not actually drive anything.
+
+If you genuinely cannot launch Godot, say so explicitly rather than implying
+the change was play-tested, and fall back to static checks: `.tscn`/`.tres`
+files must have `load_steps` equal to the number of `ext_resource` +
+`sub_resource` entries plus one, every `ExtResource("id")` / `SubResource("id")`
+must resolve to a declared id, and every `NodePath("...")` must match a node
+actually declared in that scene.
+
+### Generated files
+
+Godot writes several files on first import. `*.uid` (one per script) and
+`*.import` (one per asset) **are tracked on purpose** — they keep `uid://`
+references and import settings stable across machines. `.godot/`, `bin/`,
+`obj/` and `*.csproj.old` are ignored. Godot also rewrites the `Godot.NET.Sdk`
+version in `RPGTemplate.csproj` to match the engine that opened the project;
+that change is expected, keep it.
 
 ## File and directory naming — strict, non-negotiable
 
@@ -235,27 +270,38 @@ These are the failure modes that actually bite this project:
 
 ## Input and controller support
 
-The input map in `project.godot` defines:
+All gameplay input goes through project-defined actions in `project.godot`.
+Nothing in gameplay depends on Godot's built-in `ui_*` actions:
 
-- Movement: Godot's built-in `ui_left` / `ui_right` / `ui_up` / `ui_down`
-  (arrow keys, plus the engine's default D-pad and left-stick bindings)
-- `interact`: keyboard `E` **and** joypad button index 0 (`JOY_BUTTON_A` — the
-  bottom face button, `A` on a Steam Deck or Xbox pad, Cross on a DualSense)
+| Action | Keyboard (physical) | D-pad | Stick |
+|--------|--------------------|-------|-------|
+| `move_left` | Left arrow, `A` | `JOY_BUTTON_DPAD_LEFT` (13) | axis 0 @ -1.0 |
+| `move_right` | Right arrow, `D` | `JOY_BUTTON_DPAD_RIGHT` (14) | axis 0 @ +1.0 |
+| `move_up` | Up arrow, `W` | `JOY_BUTTON_DPAD_UP` (11) | axis 1 @ -1.0 |
+| `move_down` | Down arrow, `S` | `JOY_BUTTON_DPAD_DOWN` (12) | axis 1 @ +1.0 |
+| `interact` | `E` | `JOY_BUTTON_A` (0) | — |
 
-Every event in the map uses `"device": -1`, which matches any connected
-controller rather than a fixed device index. Keep it that way: a hardcoded
-index breaks when the Deck enumerates its built-in pad differently from a
-docked external one.
+`PlayerController` reads movement with
+`Input.GetVector("move_left", "move_right", "move_up", "move_down")`.
 
-Rules when adding or reworking controls:
+Conventions to preserve when adding or reworking controls:
 
+- **Keep gameplay off `ui_*`.** Those are for menu navigation; sharing them
+  means a menu that navigates while the player is still walking around. Add a
+  named action instead.
 - **Give every gameplay action a joypad binding at the point you add it**, not
   later. The Deck in Game Mode has no keyboard, so a keyboard-only action is
-  unreachable there without a Steam Input remap — which is a bug, not a
-  configuration step to push onto the player.
-- Prefer dedicated `move_*` actions over depending on `ui_*`, which is really
-  meant for menu navigation. Movement still rides on `ui_*` today; that is the
-  next cleanup if you touch this area.
+  unreachable there without a Steam Input remap — a bug, not a configuration
+  step to push onto the player.
+- **Use `physical_keycode`, not `keycode`.** Physical codes bind to key
+  position, so `WASD` automatically becomes `ZQSD` on AZERTY. Every keyboard
+  event in this project already does this.
+- **Every event uses `"device": -1`**, matching any connected controller rather
+  than a fixed index. Keep it that way — a hardcoded index breaks when the Deck
+  enumerates its built-in pad differently from a docked external one.
+- Movement actions use a `0.2` deadzone (analog sticks need to stay responsive
+  near centre); `interact` keeps Godot's `0.5` default, which is fine for a
+  digital button.
 
 ## Code style
 

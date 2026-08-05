@@ -6,6 +6,11 @@ export_credentials.cfg
 export_presets.cfg
 *.translation
 
+# Godot rewrites the csproj on SDK upgrades and leaves a backup behind.
+# Note that *.uid and *.import files ARE tracked on purpose — they keep
+# uid:// references and import settings stable across machines.
+*.csproj.old
+
 # .NET / C#
 .mono/
 data_*/
