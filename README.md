@@ -15,12 +15,33 @@ that combination directly, informed by common patterns from those projects.
 
 ## Getting started
 
-1. Open `project.godot` in the Godot 4.7 .NET editor. Godot will generate
-   the C# solution/user files on first open.
-2. Build the project (Project > Tools > C# > Create/Build, or just press
-   Play — Godot builds automatically).
-3. Press F5 to run. It starts on the title screen and "Start Game" loads
-   `scenes/World/TestLevel.tscn`.
+```bash
+./bootstrap.sh        # installs Godot .NET + .NET SDK if needed, imports the project
+./run-smoke-test.sh   # verifies the whole thing works (65 checks)
+```
+
+`bootstrap.sh` handles macOS, SteamOS and generic Linux, and is safe to
+re-run. Use `./bootstrap.sh --check` to see what is missing without
+installing anything.
+
+Then open `project.godot` in the Godot 4.7 .NET editor and press F5. It
+starts on the title screen; "Start Game" loads
+`scenes/World/TestLevel.tscn`.
+
+To set up by hand instead: open `project.godot` in the .NET editor (it
+generates the C# solution on first open), build with
+Project > Tools > C# > Create/Build, then press F5.
+
+## Verifying
+
+```bash
+./run-smoke-test.sh
+```
+
+Runs the game headlessly and checks the input map, movement, collision
+layers, item pickups, the dialogue signal chain, stats, inventory and
+save/load — 65 checks in total. It exits non-zero on any failure, so it
+works as a CI gate. The suite lives in `scripts/Tests/SmokeTest.cs`.
 
 ## Controls
 
@@ -88,6 +109,13 @@ resources/items/
 - New enemy/combat: `PlayerStats.TakeDamage(int)` already applies defense
   mitigation and fires `PlayerHealthChanged`; hang an enemy AI + attack
   script off the same pattern.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and the
+checks required before opening a pull request. [AGENTS.md](AGENTS.md) carries
+the same rules in more depth for AI coding agents, plus the macOS and SteamOS
+platform notes.
 
 ## Sources consulted
 

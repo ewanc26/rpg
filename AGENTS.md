@@ -25,7 +25,10 @@ rules are mandatory and are specified below.
 
 ```
 project.godot          Engine config, autoloads, input map, collision layer names
-RPGTemplate.csproj     Godot.NET.Sdk 4.7.0, net8.0
+RPGTemplate.csproj     Godot.NET.Sdk, net8.0 (Godot rewrites the SDK version)
+bootstrap.sh           One-shot dev environment setup for macOS / Linux / SteamOS
+run-smoke-test.sh      Builds and runs the headless smoke test; CI-usable exit code
+CONTRIBUTING.md        Human-facing contributor guide (this file is its agent twin)
 scripts/
   Autoload/            EventBus, GameManager (registered in project.godot)
   Player/              PlayerController, PlayerStats
@@ -33,11 +36,17 @@ scripts/
                        SaveSystem, IInteractable
   NPC/                 NPC.cs
   UI/                  HUD, DialogueBox, TitleScreen
-scenes/                Player, NPC, ItemPickup, TitleScreen, UI/, World/
+  Tests/               SmokeTest.cs
+scenes/                Player, NPC, ItemPickup, TitleScreen, SmokeTest, UI/, World/
 resources/items/       Sample InventoryItem .tres resources
 ```
 
 ## Environment setup
+
+`./bootstrap.sh` automates everything below: it detects macOS / Linux / SteamOS,
+installs the Godot .NET editor and a .NET 8 SDK if missing, and imports the
+project. `./bootstrap.sh --check` reports what is missing without installing.
+The rest of this section is what it does and why, for when it does not fit.
 
 ### macOS
 
@@ -130,21 +139,44 @@ blocked by an egress proxy; the Ubuntu package is the reliable route. The mono
 build **hard-requires** the .NET runtime — without it Godot segfaults on
 startup rather than degrading gracefully, so install the SDK first.
 
-There is **no automated test suite** checked in. "Verified" means the solution
-built with no errors *and* the change was exercised in a running game — not
-that `dotnet build` exited 0. Since a headless run is achievable, prefer
-writing a throwaway `Node` script that instantiates the relevant scene, asserts
-what you changed, prints results and calls `GetTree().Quit()`, then run it with
-`--headless <scene>` and delete it. That catches what compilation cannot:
-collision layer/mask mistakes, `NodePath` exports pointing at the wrong node,
-signals that never fire, and input actions that do not actually drive anything.
+### The smoke test
+
+`scripts/Tests/SmokeTest.cs`, run via `scenes/SmokeTest.tscn`, is the project's
+test suite. Run it with:
+
+```bash
+./run-smoke-test.sh          # honours $GODOT; finds brew/flatpak installs otherwise
+```
+
+It exits 0 only when every check passes, so it works directly as a CI gate. It
+covers what compilation cannot: collision layer/mask pairings, `NodePath`
+exports pointing at the wrong node, signals that never reach a listener, and
+input actions that do not actually drive anything.
+
+**"Verified" means the solution built with no errors *and* `./run-smoke-test.sh`
+passed** — not that `dotnet build` exited 0.
+
+When you add a system, add checks for it. Keep the existing shape: a
+`Check(bool, string)` call per assertion, grouped into a `CheckX()` method with
+a `GD.Print` header. The live-level section at the end is the valuable part —
+it instantiates `TestLevel.tscn` and drives the real game, so prefer extending
+that over adding more static assertions.
+
+Two constraints on anything you add there:
+
+- **Leave no state behind.** The suite writes a real save file, so it backs up
+  and restores any pre-existing `user://savegame.json`. Anything else that
+  touches `user://` must do the same — a test that eats a player's save is
+  worse than no test.
+- **Unsubscribe from `EventBus`.** The autoload outlives the test scene, so use
+  named local functions and detach them, as the existing checks do.
 
 If you genuinely cannot launch Godot, say so explicitly rather than implying
-the change was play-tested, and fall back to static checks: `.tscn`/`.tres`
-files must have `load_steps` equal to the number of `ext_resource` +
-`sub_resource` entries plus one, every `ExtResource("id")` / `SubResource("id")`
-must resolve to a declared id, and every `NodePath("...")` must match a node
-actually declared in that scene.
+the change was tested, and fall back to static checks: `.tscn`/`.tres` files
+must have `load_steps` equal to the number of `ext_resource` + `sub_resource`
+entries plus one, every `ExtResource("id")` / `SubResource("id")` must resolve
+to a declared id, and every `NodePath("...")` must match a node actually
+declared in that scene.
 
 ### Generated files
 
