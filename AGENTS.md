@@ -14,7 +14,12 @@ build. There is no GDScript in this project — all gameplay code is C#.
 - Autoloads: `EventBus` (global signals), `GameManager` (scene changes, pause)
 
 Target platforms are **macOS** and **SteamOS / Linux desktop** (Steam Deck).
-Windows is not tested; do not add Windows-only APIs or path assumptions.
+Windows is not a runtime target and is not tested; do not add Windows-only
+APIs or path assumptions. **File and directory names are held to a stricter,
+fully platform-agnostic standard than the runtime targets** — including
+Windows and exFAT constraints — because a name that is merely macOS-and-Linux
+safe still breaks contributor checkouts, CI runners, and microSD copies. Those
+rules are mandatory and are specified below.
 
 ## Repository layout
 
@@ -115,6 +120,101 @@ When you cannot run the editor, you can still statically check scene integrity:
 `SubResource("id")` must resolve to a declared id, and every `NodePath("...")`
 must match a node actually declared in that scene.
 
+## File and directory naming — strict, non-negotiable
+
+Every file and directory name in this repository must be portable across
+**every** filesystem the project touches: case-insensitive APFS on macOS,
+case-sensitive ext4/btrfs on SteamOS, exFAT on a Steam Deck microSD card, and
+NTFS on any contributor's machine. Names are therefore restricted to the
+lowest common denominator of all of them. This is not a style preference — the
+excluded characters cause silent data loss, unreproducible build failures, or
+files that cannot be checked out at all.
+
+### The allowed set
+
+Every path component (each directory name and each filename, including its
+extension) **must** match this regex, and nothing outside it is permitted:
+
+```
+^[A-Za-z0-9][A-Za-z0-9._-]*$
+```
+
+In words: ASCII letters and digits, plus `.` `_` `-`, and it must start with a
+letter or digit. The only exception is a deliberate dotfile or dot-directory at
+the repository root (`.gitignore`, `.github/`), which may take one leading dot.
+
+### Explicitly forbidden
+
+Do not create, rename to, or reference any name containing:
+
+- **Spaces.** Break unquoted shell in build and export scripts. Use `-` or `_`.
+- **Any non-ASCII character** — accented letters, CJK, emoji, curly quotes.
+  macOS normalizes filenames to Unicode NFD while Linux stores NFC, so the same
+  visible name becomes two different byte sequences. Git then reports a file
+  that is simultaneously deleted and untracked, and the file silently fails to
+  load on one of the two platforms.
+- `< > : " / \ | ? *` and any control character (0x00–0x1F). Reserved on
+  NTFS/exFAT; `:` additionally carries legacy path-separator meaning on macOS.
+- `# % & { } $ ! ' @ + = ~ ^` and backtick. These survive on disk but break
+  shell globbing, `res://` URI parsing, and Godot's `.import` bookkeeping.
+- A **leading hyphen** (`-foo.tscn`), which CLI tools parse as a flag.
+- A **trailing dot or trailing space** (`Player.tscn.`). Windows silently
+  strips them, so the checked-out name stops matching the committed name.
+- The **Windows reserved device names**, with or without an extension:
+  `CON`, `PRN`, `AUX`, `NUL`, `COM0`–`COM9`, `LPT0`–`LPT9`. `NUL.cs` cannot be
+  created on Windows at all, which makes the repo un-clonable there.
+- **Two names in the same directory differing only by case** (`Player.cs` and
+  `player.cs`). They coexist on SteamOS and collapse into one file on macOS,
+  destroying one of them on checkout.
+
+Keep each component under 255 bytes and total paths short.
+
+### Required casing per file type
+
+Casing is part of the name. Match the existing convention exactly:
+
+| Kind | Convention | Example |
+|------|-----------|---------|
+| Top-level directories | lowercase | `scripts/`, `scenes/`, `resources/` |
+| Nested directories | PascalCase | `scripts/Systems/`, `scenes/UI/` |
+| C# scripts | PascalCase, matching the primary type name | `PlayerController.cs` |
+| Scenes (`.tscn`) | PascalCase, matching the root node name | `ItemPickup.tscn` |
+| Resources (`.tres`) | snake_case | `health_potion.tres` |
+| Root config and docs | whatever the tool requires | `project.godot`, `README.md` |
+
+Do not rename existing files to "harmonize" these conventions unless asked to;
+a rename that changes only case needs a two-step `git mv` to survive a
+case-insensitive checkout, and it invalidates every `res://` reference and
+`.uid` mapping pointing at the old name.
+
+### Referencing paths from code and scenes
+
+- Every `res://` and `user://` string must match the on-disk name **exactly**,
+  byte for byte, including case. **Godot's exported PCK is case-sensitive on
+  every platform**, so a mis-cased path can load correctly in the editor on
+  macOS and still fail in the exported build on that same Mac. Passing on your
+  machine proves nothing here.
+- Never assemble game-data paths with `\` or `System.IO`; see the rule below.
+
+### Verifying before you commit
+
+These three checks must all come back empty. Run them from the repo root:
+
+```bash
+# 1. Any path component outside the allowed set
+git ls-files | tr '/' '\n' | sort -u | grep -Ev '^\.?[A-Za-z0-9][A-Za-z0-9._-]*$'
+
+# 2. Names colliding under case folding
+git ls-files | tr 'A-Z' 'a-z' | sort | uniq -d
+
+# 3. Windows reserved device names
+git ls-files | tr '/' '\n' | sed 's/\..*//' | tr 'a-z' 'A-Z' \
+  | grep -Ex 'CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9]'
+```
+
+The repository currently passes all three. If you add files, it must still
+pass — a violation is a blocking defect, not a nit to clean up later.
+
 ## Cross-platform rules
 
 These are the failure modes that actually bite this project:
@@ -122,8 +222,8 @@ These are the failure modes that actually bite this project:
 1. **Filesystem case sensitivity.** macOS APFS is case-insensitive by default;
    SteamOS (ext4/btrfs) is case-sensitive. A `res://Scenes/player.tscn`
    reference that loads fine on a Mac will fail to load on the Deck. Always
-   match the on-disk casing exactly. This is the single most common way a
-   macOS-authored change breaks on SteamOS.
+   match the on-disk casing exactly — see the naming rules above. This is the
+   single most common way a macOS-authored change breaks on SteamOS.
 2. **Never build paths with `\` or `System.IO` for game data.** Use `res://`
    and `user://` with Godot's `FileAccess`/`DirAccess`, as `SaveSystem` does.
 3. **Line endings and file modes.** Exported Linux binaries need the executable
