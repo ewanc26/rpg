@@ -1,120 +1,87 @@
-# Contributing
+# Contributing to Zincfox
 
-Thanks for taking an interest. This is a **starter template**, not a game, and
-that shapes what belongs here: changes should make the scaffolding clearer or
-more useful to someone starting a project, rather than turning it into a
-specific game. A generic inventory system fits; a boss fight does not.
+Zincfox is an experimental clean-room C/C++23 Minecraft: Java Edition server.
+The current implementation has an experimental protocol-767 login,
+configuration, and Play-spawn path validated with the MCP client, but no
+general real-client, version, or gameplay compatibility claim.
 
-If you are an AI coding agent, read [AGENTS.md](AGENTS.md) instead — it carries
-the same rules in more detail, plus the constraints that matter when you cannot
-open the editor.
+## Before submitting changes
 
-## Getting set up
+Build and test with the repository's strict warnings enabled:
 
-```bash
-./bootstrap.sh
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+cmake -S . -B build-san -DCMAKE_BUILD_TYPE=Debug \
+  -DZINCFOX_ENABLE_SANITIZERS=ON
+cmake --build build-san -j
+ctest --test-dir build-san --output-on-failure
 ```
 
-It detects macOS or Linux/SteamOS, installs the Godot .NET editor and a .NET 8
-SDK if they are missing, and imports the project. Re-running it is safe.
-`./bootstrap.sh --check` reports what is missing without installing anything.
+Run `clang-format` on changed C/C++ files. New protocol behavior needs positive,
+malformed-input, fragmentation, and boundary coverage. Network behavior must
+remain non-blocking and bounded; prefer fixed-capacity storage, reusable
+buffers, borrowed `std::span` inputs, and explicit ownership.
 
-If you would rather do it by hand, see the setup sections in
-[AGENTS.md](AGENTS.md) — in particular the two traps worth knowing up front:
+For the real-client regression path, set `ZINCFOX_MCP_ROOT` to the local
+`mcp-minecraft` checkout and run the server on `127.0.0.1:25565`:
 
-- **Install the .NET build of Godot**, not the plain one. Everything here is
-  C#, and the plain build silently fails to load all of it.
-- **On SteamOS, use the Flatpak**, not `pacman`. The root filesystem is
-  read-only, and package changes are wiped by the next system update.
-
-## The development loop
-
-```bash
-./run-smoke-test.sh                     # build + verify (65 checks, exits non-zero on failure)
-godot --path . --editor                 # open the editor; F5 runs the game
+```sh
+ZINCFOX_MCP_ROOT=/path/to/mcp-minecraft node test/client_regression.mjs
 ```
 
-Prefer running the game in the editor while iterating — Godot surfaces script
-and scene errors there that a plain `dotnet build` will not catch.
+The harness uses two 1.21.1 clients, verifies both reach Play spawn, checks
+unsigned system-chat delivery, and exercises movement, terrain dig/place, and
+disconnect broadcasts. It uses unique bounded usernames and derives interaction
+coordinates from the generated surface so persisted player state cannot make a
+run accidentally pass or fail. It is a local development check because the MCP
+dependency is intentionally not vendored.
 
-## Before you open a pull request
+## Protocol and compatibility
 
-Two checks are required. Both are quick.
+Protocol definitions belong in `src/protocol/` and version-specific behavior
+must remain isolated from transport and game state. Public references used for
+wire formats must be recorded in the change or its documentation. Do not copy
+Mojang code or claim a Minecraft version until a real client path and automated
+regression coverage exist.
 
-**1. The smoke test passes.**
+Every new long-lived allocation or queue must document its owner, normal size,
+maximum size, and growth/backpressure rule. The initial networking budget is
+32 connection slots with fixed 8 KiB receive and 128 KiB transmit buffers per slot.
+User-visible errors and connection drops must use a unique hexadecimal code;
+see `docs/error-codes.md`.
 
-```bash
-./run-smoke-test.sh
-```
-
-This exercises the real game headlessly: the input map, movement, collision
-layers, pickups, the dialogue signal chain, stats, inventory and save/load. It
-catches the class of bug that compiles perfectly and is still broken — a
-`NodePath` export pointing at the wrong node, a collision mask that no longer
-overlaps, a signal nobody receives.
-
-If you add a system, add checks for it in `scripts/Tests/SmokeTest.cs`. A
-change that cannot be exercised there is worth a note in the PR explaining why.
-
-**2. File names pass the portability checks.**
-
-```bash
-git ls-files | tr '/' '\n' | sort -u | grep -Ev '^\.?[A-Za-z0-9][A-Za-z0-9._-]*$'
-git ls-files | tr 'A-Z' 'a-z' | sort | uniq -d
-```
-
-Both must print nothing. Naming is held to a strict, fully platform-agnostic
-standard — see the naming section of [AGENTS.md](AGENTS.md) for the rules and
-the reasoning. The short version: ASCII letters, digits, `.`, `_` and `-` only,
-no spaces, and never two names differing only in case.
-
-This is stricter than it looks like it needs to be, for a concrete reason:
-macOS is case-insensitive and SteamOS is not, so a path that works on your Mac
-can fail on a Steam Deck — and Godot's exported PCK is case-sensitive on
-*every* platform, so a mis-cased `res://` path can even work in your editor and
-break in your own exported build.
-
-## Code style
-
-Match the surrounding code. The full set is in [AGENTS.md](AGENTS.md); the
-points that come up most often:
-
-- Node scripts are `public partial class X : <GodotType>`.
-- Exported members are `[Export] public T Name { get; set; }` in PascalCase.
-  **The C# property name and the `.tscn` key must match exactly** — Godot will
-  not warn you when they drift, so grep the scenes after renaming one.
-- Systems talk to each other through `EventBus` signals, not direct node
-  references. UI listens; it does not poll.
-- Subscribe in `_Ready()`, and **always** unsubscribe in `_ExitTree()`. The
-  autoload outlives scenes, so a missed unsubscribe fires callbacks on freed
-  nodes in the next scene.
-- Every new gameplay action needs a **gamepad binding when you add it**. A
-  keyboard-only action is unreachable on a Steam Deck in Game Mode, which is a
-  bug rather than something to leave to the player's remapping.
+All configurable server behavior belongs in the global `zincfox.conf` file.
+New settings need a validated finite range, a documented default, load/save
+tests, and memory/resource documentation where applicable. Dynamic settings
+must resolve to documented finite limits when host information is unavailable.
 
 ## Commits and pull requests
 
-- Branch off `main`; do not push to it directly.
-- Write commit messages that explain *why*, not just what changed. The diff
-  already says what changed.
-- Keep a pull request to one coherent change.
-- Say what you actually verified. "Smoke test passes" and "opened it on a Deck
-  and played it" are different claims, and the difference matters here — most
-  of this project has never touched real hardware.
+Use a dedicated `feat/<area>` or `fix/<area>` branch; never push feature work
+directly to `main`. Make atomic conventional commits such as
+`feat(protocol): ...`, `fix(net): ...`, or `test(protocol): ...`. Pull
+requests should explain compatibility claims, memory bounds, test commands,
+portability, and any borrowed design or reference material.
 
-## Testing on the target platforms
+## Releases
 
-Automated checks run headlessly on Linux, which covers logic, collision and
-signals. They cannot tell you how the game *feels*. If you have the hardware,
-these are genuinely useful things to report in a PR:
+Zincfox uses strict semantic versions and cuts the next sequential release when
+a substantial tranche is ready. Substantial means a user-visible protocol or
+gameplay change, persistence/world-format change, compatibility claim, public
+interface change, or material resource-budget change; documentation-only,
+test-only, formatting, and internal refactoring changes do not require a
+release unless they alter the published contract.
 
-- Stick and D-pad response on a Steam Deck in Game Mode
-- Whether the UI reads well at the Deck's 1280×800 (16:10) panel
-- macOS behaviour on Apple Silicon, especially an exported `.app`
+Before cutting a release, audit the commits since the latest tag. Update only
+the `VERSION` line in `CMakeLists.txt`, commit that bump with the finished
+tranche, create a signed annotated `v<major>.<minor>.<patch>` tag on the same
+commit (or an annotated tag if signing is unavailable), push both, and create a
+GitHub release with generated notes. Releases before `v1.0.0` are source-only;
+release artifacts begin with `v1.0.0`. Never skip a version or create a tag or
+release without its matching version commit.
 
-## Reporting bugs
-
-Open an issue with the platform, the Godot version (`godot --version`), the
-.NET SDK version (`dotnet --version`), and whether `./run-smoke-test.sh`
-passes. That last one separates "the template is broken" from "my environment
-is broken" immediately.
+Zincfox is licensed under the GNU Affero General Public License v3.0. Keep
+license notices and attribution intact when using external references or
+borrowed designs.
