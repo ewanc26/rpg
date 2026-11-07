@@ -16,4 +16,4 @@ a godot mono rpg template.
 
 ## Recent direction
 
-Recent commits: Sync AGENTS.md from zincfox; Sync AGENTS.md from zincfox; Sync AGENTS.md from zincfox; Sync CONTRIBUTING.md from zincfox; Sync CONTRIBUTING.md from zincfox
+Recent commits: docs: tailor contributor and agent guidance (#7); Update issue template: config.yml; Update issue template: documentation.yml; Update issue template: feature_request.yml; Update issue template: bug_report.yml; Merge pull request #6 from ewanc26/claude/godot-mono-rpg-template-qevlxo; Add a permanent smoke test, bootstrap script and contributor guide
