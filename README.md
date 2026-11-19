@@ -50,8 +50,7 @@ works as a CI gate. The suite lives in `scripts/Tests/SmokeTest.cs`.
 | Move      | Arrow keys / `WASD` | Left stick / D-pad       |
 | Interact  | `E`                 | `A` (bottom face button) |
 
-Every action is a project-defined action in `project
-.godot` (`move_left`,
+Every action is a project-defined action in `project.godot` (`move_left`,
 `move_right`, `move_up`, `move_down`, `interact`) rather than one of Godot's
 built-in `ui_*` actions, so gameplay input and menu navigation stay
 independent. Keyboard bindings use *physical* keycodes, so `WASD` lands on the
@@ -94,8 +93,7 @@ resources/items/
 - **Inventory** is a plain component `Node` — attach it to any actor
   (already on `Player.tscn`) and call `AddItem`/`RemoveItem`.
 - **IInteractable** is implemented by `NPC.cs`; `PlayerController` tracks
-  interactables in range via i
-ts `InteractionArea` and calls `Interact()`
+  interactables in range via its `InteractionArea` and calls `Interact()`
   on the nearest one when you press `interact`. Add new interactable types
   (chests, signs, doors) by implementing the same interface.
 - **SaveSystem** is a static utility (`SaveSystem.Save`/`Load`) that
@@ -124,7 +122,6 @@ platform notes.
 - [chickensoft-games/GodotGame](https://github.com/chickensoft-games/GodotGame) — C# project template conventions (`.csproj`/SDK setup) for Godot 4
 - [gdquest-demos/godot-open-rpg](https://github.com/gdquest-demos/godot-open-rpg) — reference for RPG project structure (GDScript, not C#)
 - [Godot 4 C# documentation](https://docs.godotengine.org/en/stable/tutorials/scripting/c_sharp/index.html) — signals, autoloads, `GlobalClass` resources
-
 ## Licence
 
 See [LICENSE](LICENSE) for the licence terms.
