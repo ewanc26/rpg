@@ -1,19 +1,29 @@
-# Contributing to rpg
+# Contributing to the RPG template
 
-a godot mono rpg template.
+A minimal top-down RPG starter for Godot **4.7** with the **.NET (C#)** build — a from-scratch scaffold for the Godot-Mono + RPG combination, since nothing else covered that gap. Thanks for wanting to help!
 
-## Project context
+## Getting started
 
-- Primary language: C#
-- Default branch: main
+```bash
+./bootstrap.sh          # installs Godot .NET + .NET SDK if needed, imports the project
+./run-smoke-test.sh     # verifies everything works — 65 checks
+```
 
-## Before submitting changes
+`bootstrap.sh` handles macOS, SteamOS and generic Linux, is safe to re-run, and `--check` shows what's missing without installing.
 
-- Read the README, manifests, and CI workflows before choosing commands.
-- Run the documented formatter, linter, build, and test checks relevant to your change.
-- Keep commits focused and explain compatibility or operational impact.
-- Open changes through a pull request with verification results.
+## Notes for this template
 
-## Recent direction
+- **It must stay a template.** Environment-specific or content-heavy additions fight the point: the repo's job is to be a clean, minimal scaffold someone else starts a real game from.
+- Gameplay input goes through project-defined actions (`move_left`, …, `interact`) rather than built-in `ui_*` actions, keeping menu navigation independent — preserve that in any input change.
+- The smoke suite (`./run-smoke-test.sh`, `scripts/Tests/SmokeTest.cs`) is the gate: it checks input map, movement, collisions, pickups, the dialogue signal chain, stats, inventory and save/load headlessly. New features should add checks; the suite exits non-zero on any failure, and it doubles as the CI gate.
+- "Minimal" is a feature: before adding a system, ask whether an average user would delete it after forking.
 
-Recent commits: docs: tailor contributor and agent guidance (#7); Update issue template: config.yml; Update issue template: documentation.yml; Update issue template: feature_request.yml; Update issue template: bug_report.yml; Merge pull request #6 from ewanc26/claude/godot-mono-rpg-template-qevlxo; Add a permanent smoke test, bootstrap script and contributor guide
+## Before opening a PR
+
+- `./run-smoke-test.sh` passes locally (all 65+ checks).
+- Conventional commits; focused PRs; note what the smoke coverage now includes.
+- AI-assisted PRs welcome; stand behind every line and run the suite yourself.
+
+## Licence
+
+See [LICENCE](LICENCE)/[LICENSE](LICENSE). Contributions accepted under the same terms.
