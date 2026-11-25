@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
+      # Keep in step with the Godot.NET.Sdk version in RPGTemplate.csproj.
+      - name: Install Godot (.NET)
+        env:
+          GODOT_VERSION: 4.7.1-stable
+        run: |
+          name="Godot_v${GODOT_VERSION}_mono_linux"
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}"
+          curl -fsSL -o "${RUNNER_TEMP}/${name}_x86_64.zip" "${base}/${name}_x86_64.zip"
+          echo "6ca7ff0459f1b806900be683c1b0837c607a9c16834c530dc68c81b9fc3ae1f6  ${RUNNER_TEMP}/${name}_x86_64.zip" | sha256sum --check
+          unzip -q "${RUNNER_TEMP}/${name}_x86_64.zip" -d "${RUNNER_TEMP}"
+          echo "GODOT=${RUNNER_TEMP}/${name}_x86_64/Godot_v${GODOT_VERSION}_mono_linux.x86_64" >> "${GITHUB_ENV}"
+      - name: Import project
+        run: '"$GODOT" --headless --path . --import'
+      - name: Smoke test
+        run: ./run-smoke-test.sh
